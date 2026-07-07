@@ -10,7 +10,7 @@ import threading
 import argparse
 import math
 from piper_sdk import *
-from piper_sdk import C_PiperInterface
+from piper_sdk import C_PiperInterface_V2
 from piper_msgs.msg import PiperStatusMsg, PosCmd
 from piper_msgs.srv import Enable
 from geometry_msgs.msg import Pose, PoseStamped
@@ -69,7 +69,7 @@ class PiperRosNode(Node):
         # Enable flag
         self.__enable_flag = False
         # Create piper class and open CAN interface
-        self.piper = C_PiperInterface(can_name=self.can_port)
+        self.piper = C_PiperInterface_V2() # CAN name intensionally omitted to make it always work
         self.piper.ConnectPort()
 
         # Start subscription thread
