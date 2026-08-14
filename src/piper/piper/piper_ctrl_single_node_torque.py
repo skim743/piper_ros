@@ -283,7 +283,7 @@ class PiperRosNode(Node):
                 self.piper.GripperCtrl(abs(gripper), 1000, 0x01, 0)
 
     def joint_callback(self, joint_data):
-        """Callback function for joint angles
+        """Callback function for joint torques
 
         Args:
             joint_data (): The joint data
@@ -292,46 +292,50 @@ class PiperRosNode(Node):
         # self.get_logger().info(f"Received Joint States:")
 
         # Create a dictionary to store the joint name to position mapping
-        joint_positions = {}
+        joint_torques = {}
         joint_6 = 0
 
-        # Iterate over joint_data.name to map the positions
+        # Iterate over joint_data.name to map the torques
         for idx, joint_name in enumerate(joint_data.name):
-            self.get_logger().info(f"{joint_name}: {joint_data.position[idx]}")
-            joint_positions[joint_name] = round(joint_data.position[idx] * factor)
+            self.get_logger().info(f"{joint_name}: {joint_data.effort[idx]}")
+            joint_torques[joint_name] = joint_data.effort[idx]
         
-        # Get the position of the 7th joint
-        if len(joint_data.position) >= 7:
-            # self.get_logger().info(f"joint_7: {joint_data.position[6]}")
-            joint_6 = round(joint_data.position[6] * 1000 * 1000)
-            joint_6 = joint_6 * self.gripper_val_mutiple
+        # # Get the position of the 7th joint
+        # if len(joint_data.position) >= 7:
+        #     # self.get_logger().info(f"joint_7: {joint_data.position[6]}")
+        #     joint_6 = round(joint_data.position[6] * 1000 * 1000)
+        #     joint_6 = joint_6 * self.gripper_val_mutiple
 
-        # Control the motor speed
+        # # Control the motor speed
         if self.GetEnableFlag():
-            if joint_data.velocity != []:
-                all_zeros = all(v == 0 for v in joint_data.velocity)
-            else:
-                all_zeros = True
-            if not all_zeros:
-                lens = len(joint_data.velocity)
-                if lens == 7:
-                    vel_all = clip(round(joint_data.velocity[6]), 1, 100)
-                    self.get_logger().info(f"vel_all: {vel_all}")
-                    self.piper.MotionCtrl_2(0x01, 0x01, vel_all)
-                else:
-                    self.piper.MotionCtrl_2(0x01, 0x01, 100)
-            else:
-                self.piper.MotionCtrl_2(0x01, 0x01, 100)
+        #     if joint_data.velocity != []:
+        #         all_zeros = all(v == 0 for v in joint_data.velocity)
+        #     else:
+        #         all_zeros = True
+        #     if not all_zeros:
+        #         lens = len(joint_data.velocity)
+        #         if lens == 7:
+        #             vel_all = clip(round(joint_data.velocity[6]), 1, 100)
+        #             self.get_logger().info(f"vel_all: {vel_all}")
+        #             self.piper.MotionCtrl_2(0x01, 0x01, vel_all)
+        #         else:
+        #             self.piper.MotionCtrl_2(0x01, 0x01, 100)
+        #     else:
+        #         self.piper.MotionCtrl_2(0x01, 0x01, 100)
+            self.piper.MotionCtrl_2(0x01, 0x04, 0, 0xAD)
 
             # Use the joint names to control the joints dynamically
-            self.piper.JointCtrl(
-                joint_positions.get('joint1', 0),
-                joint_positions.get('joint2', 0),
-                joint_positions.get('joint3', 0),
-                joint_positions.get('joint4', 0),
-                joint_positions.get('joint5', 0),
-                joint_positions.get('joint6', 0)
-            )
+            for i in range(6):
+                self.piper.JointMitCtrl(i+1, 0.0, 0.0, 0.0, 0.0, joint_torques.get(f'joint{i+1}', 0))
+                self.get_logger().info(f"joint{i+1}: {joint_torques.get(f'joint{i+1}', 0)}")
+            # self.piper.JointCtrl(
+            #     joint_positions.get('joint1', 0),
+            #     joint_positions.get('joint2', 0),
+            #     joint_positions.get('joint3', 0),
+            #     joint_positions.get('joint4', 0),
+            #     joint_positions.get('joint5', 0),
+            #     joint_positions.get('joint6', 0)
+            # )
 
             # Gripper control
             if self.gripper_exist:

@@ -32,6 +32,7 @@ setup(
             'piper_read_master = piper.piper_read_master_node:main',
             'piper_broadcast_master = piper.piper_broadcast_master:main',
             'piper_read_slave_joint = piper.piper_read_slave_joint:main',
+            'piper_ctrl_single_node_torque = piper.piper_ctrl_single_node_torque:main',
         ],
     },
 )
