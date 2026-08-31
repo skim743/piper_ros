@@ -1,0 +1,21 @@
+{
+  "units": "radians for joint1-joint6, meters for gripper",
+  "convention": "command_sent_to_sdk = command_received - offset",
+  "note": "Station 11 is the reference station. A missing station is a hard startup error, not a silent zero.",
+  "stations": {
+    "1":  {"joint1":  0.02321829, "joint2":  0.00910173, "joint3": -0.03996214, "joint4": -0.03830964, "joint5": 0.10155467, "joint6": -0.03065713, "gripper": 0.0},
+    "2":  {"joint1":  0.01820654, "joint2": -0.00352656, "joint3": -0.00632112, "joint4":  0.00353667, "joint5": 0.04040816, "joint6": -0.03062013, "gripper": 0.0},
+    "3":  {"joint1":  0.01551772, "joint2":  0.00531139, "joint3": -0.00991890, "joint4": -0.08857924, "joint5": 0.03289094, "joint6": -0.04199907, "gripper": 0.0},
+    "4":  {"joint1":  0.02146330, "joint2":  0.00162367, "joint3":  0.00224904, "joint4": -0.00127418, "joint5": 0.07886142, "joint6": -0.02211866, "gripper": 0.0},
+    "5":  {"joint1":  0.02510820, "joint2": -0.00635497, "joint3": -0.02101643, "joint4": -0.07892440, "joint5": 0.09792906, "joint6": -0.09720207, "gripper": 0.0, "quality": "approximate"},
+    "6":  {"joint1":  0.01112712, "joint2":  0.03264597, "joint3": -0.02738706, "joint4": -0.01611043, "joint5": 0.10601071, "joint6": -0.01252022, "gripper": 0.0, "quality": "approximate"},
+    "7":  {"joint1":  0.02140098, "joint2": -0.00576347, "joint3":  0.00880733, "joint4": -0.00593615, "joint5": 0.02133216, "joint6":  0.00560446, "gripper": 0.0},
+    "8":  {"joint1":  0.00730359, "joint2":  0.00740132, "joint3": -0.04213898, "joint4": -0.00291651, "joint5": 0.10787516, "joint6": -0.02172383, "gripper": 0.0},
+    "9":  {"joint1":  0.01102888, "joint2": -0.00241522, "joint3": -0.03314344, "joint4": -0.01546467, "joint5": 0.12767250, "joint6": -0.03068104, "gripper": 0.0},
+    "10": {"joint1":  0.03264093, "joint2":  0.02947261, "joint3": -0.02512171, "joint4": -0.02812324, "joint5": 0.05315014, "joint6": -0.02938591, "gripper": 0.0},
+    "11": {"joint1":  0.0,        "joint2":  0.0,        "joint3":  0.0,        "joint4":  0.0,        "joint5": 0.0,        "joint6":  0.0,        "gripper": 0.0, "quality": "reference"},
+    "12": {"joint1": -0.01712320, "joint2": -0.00228400, "joint3":  0.00153009, "joint4": -0.09052934, "joint5": 0.07490137, "joint6":  0.08260109, "gripper": 0.0},
+    "13": {"joint1":  0.01038045, "joint2":  0.00931645, "joint3": -0.08858023, "joint4": -0.02868523, "joint5": 0.24640430, "joint6": -0.00241596, "gripper": 0.0, "quality": "approximate"},
+    "14": {"joint1":  0.01498489, "joint2": -0.01462671, "joint3": -0.02245972, "joint4": -0.04720494, "joint5": 0.06598705, "joint6": -0.01857491, "gripper": 0.0}
+  }
+}

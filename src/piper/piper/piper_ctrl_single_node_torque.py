@@ -28,6 +28,8 @@ class PiperRosNode(Node):
         self.declare_parameter('auto_enable', False)
         self.declare_parameter('gripper_exist', True)
         self.declare_parameter('gripper_val_mutiple', 1)
+        # Accepted for launch-file compatibility; offsets are NOT applied in torque mode yet.
+        self.declare_parameter('station_id', 0)
 
         self.can_port = self.get_parameter('can_port').get_parameter_value().string_value
         self.auto_enable = self.get_parameter('auto_enable').get_parameter_value().bool_value
@@ -39,6 +41,8 @@ class PiperRosNode(Node):
         self.get_logger().info(f"auto_enable is {self.auto_enable}")
         self.get_logger().info(f"gripper_exist is {self.gripper_exist}")
         self.get_logger().info(f"gripper_val_mutiple is {self.gripper_val_mutiple}")
+        self.station_id = self.get_parameter('station_id').get_parameter_value().integer_value
+        self.get_logger().info(f"station_id is {self.station_id} (accepted but NOT applied in torque mode)")
         # Publishers
         self.joint_pub = self.create_publisher(JointState, 'joint_states_single', 1)
         self.joint_feedback_pub = self.create_publisher(JointState, 'joint_states_feedback', 1)
