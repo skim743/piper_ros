@@ -17,6 +17,11 @@ from geometry_msgs.msg import Pose, PoseStamped
 from scipy.spatial.transform import Rotation as R  # For Euler angle to quaternion conversion
 from numpy import clip
 from builtin_interfaces.msg import Time
+from ament_index_python.packages import get_package_share_directory
+import json
+import os
+
+JOINT_NAMES = ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'gripper']
 
 class PiperRosNode(Node):
     """ROS2 node for the robotic arm"""
@@ -28,6 +33,8 @@ class PiperRosNode(Node):
         self.declare_parameter('auto_enable', False)
         self.declare_parameter('gripper_exist', True)
         self.declare_parameter('gripper_val_mutiple', 1)
+        self.declare_parameter('station_id', 0)
+        self.declare_parameter('offsets_file', '')
 
         self.can_port = self.get_parameter('can_port').get_parameter_value().string_value
         self.auto_enable = self.get_parameter('auto_enable').get_parameter_value().bool_value
@@ -39,6 +46,10 @@ class PiperRosNode(Node):
         self.get_logger().info(f"auto_enable is {self.auto_enable}")
         self.get_logger().info(f"gripper_exist is {self.gripper_exist}")
         self.get_logger().info(f"gripper_val_mutiple is {self.gripper_val_mutiple}")
+        # Per-station joint offsets
+        self.station_id = self.get_parameter('station_id').get_parameter_value().integer_value
+        self.offsets_file = self.get_parameter('offsets_file').get_parameter_value().string_value
+        self.joint_offsets = self.LoadJointOffsets()
         # Publishers
         self.joint_pub = self.create_publisher(JointState, 'joint_states_single', 1)
         self.joint_feedback_pub = self.create_publisher(JointState, 'joint_states_feedback', 1)
@@ -79,6 +90,36 @@ class PiperRosNode(Node):
 
         self.publisher_thread = threading.Thread(target=self.publish_thread)
         self.publisher_thread.start()
+
+    def LoadJointOffsets(self):
+        """Load this station's joint offsets (radians for joint1-6, meters for gripper)
+
+        Returns:
+            dict: joint name -> offset. Zeros when station_id is unset (0).
+        """
+        if self.station_id == 0:
+            self.get_logger().warn("station_id is not set, running with ZERO joint offsets")
+            return {name: 0.0 for name in JOINT_NAMES}
+
+        path = self.offsets_file
+        if not path:
+            path = os.path.join(get_package_share_directory('piper'), 'config', 'joint_offsets.json')
+        with open(path) as f:
+            stations = json.load(f)['stations']
+
+        key = str(self.station_id)
+        if key not in stations:
+            raise RuntimeError(f"station {key} is not present in {path}")
+
+        entry = stations[key]
+        offsets = {name: float(entry.get(name, 0.0)) for name in JOINT_NAMES}
+        quality = entry.get('quality')
+        if quality == 'uncalibrated':
+            self.get_logger().warn(f"station {key} offsets are UNCALIBRATED placeholders")
+        elif quality == 'approximate':
+            self.get_logger().warn(f"station {key} offsets are approximate")
+        self.get_logger().info(f"station {key} joint offsets: {offsets}")
+        return offsets
 
     def GetEnableFlag(self):
         return self.__enable_flag
@@ -298,12 +339,13 @@ class PiperRosNode(Node):
         # Iterate over joint_data.name to map the positions
         for idx, joint_name in enumerate(joint_data.name):
             self.get_logger().info(f"{joint_name}: {joint_data.position[idx]}")
-            joint_positions[joint_name] = round(joint_data.position[idx] * factor)
+            offset = self.joint_offsets.get(joint_name, 0.0)
+            joint_positions[joint_name] = round((joint_data.position[idx] - offset) * factor)
         
         # Get the position of the 7th joint
         if len(joint_data.position) >= 7:
             # self.get_logger().info(f"joint_7: {joint_data.position[6]}")
-            joint_6 = round(joint_data.position[6] * 1000 * 1000)
+            joint_6 = round((joint_data.position[6] - self.joint_offsets['gripper']) * 1000 * 1000)
             joint_6 = joint_6 * self.gripper_val_mutiple
 
         # Control the motor speed

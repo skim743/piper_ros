@@ -42,6 +42,12 @@ def generate_launch_description():
         description='gripper'
     )
 
+    station_id_arg = DeclareLaunchArgument(
+        'station_id',
+        default_value='0',
+        description='Station number (1-14) used to look up joint offsets. 0 disables offsets.'
+    )
+
     # Define the node
     piper_node = Node(
         package='piper',
@@ -54,6 +60,7 @@ def generate_launch_description():
             'auto_enable': LaunchConfiguration('auto_enable'),
             'gripper_val_mutiple': LaunchConfiguration('gripper_val_mutiple'),
             'gripper_exist': LaunchConfiguration('gripper_exist'),
+            'station_id': LaunchConfiguration('station_id'),
         }],
         remappings=[
             ('joint_ctrl_single', '/joint_states'),
@@ -68,5 +75,6 @@ def generate_launch_description():
         auto_enable_arg,
         gripper_exist_arg,
         gripper_val_mutiple_arg,
+        station_id_arg,
         piper_node
     ])
