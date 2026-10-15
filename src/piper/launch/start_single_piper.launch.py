@@ -4,7 +4,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 import os
 
-os.environ["RCUTILS_COLORIZED_OUTPUT"] = "1"   # 强制彩色日志
+os.environ["RCUTILS_COLORIZED_OUTPUT"] = "1"   # Force colored output in the terminal for ROS 2 logging
 
 def generate_launch_description():
     log_level_arg = DeclareLaunchArgument(
