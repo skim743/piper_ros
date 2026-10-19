@@ -81,6 +81,13 @@ def generate_launch_description():
         description='Color/depth/infra profile (WxHxFPS) for both RealSense cameras.'
     )
 
+    realsense_pointcloud_arg = DeclareLaunchArgument(
+        'realsense_pointcloud',
+        default_value='false',
+        description='Publish the RealSense driver\'s own depth/color/points on both cameras. '
+                    'armlab_object_tracker builds its clouds from aligned depth and does not need it.'
+    )
+
     # Run every node below on ROS_DOMAIN_ID = station_id
     domain_id_env = SetEnvironmentVariable(
         'ROS_DOMAIN_ID',
@@ -113,7 +120,7 @@ def generate_launch_description():
             'rgb_camera.color_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.depth_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.infra_profile': LaunchConfiguration('realsense_profile'),
-            'pointcloud.enable': True,
+            'pointcloud.enable': LaunchConfiguration('realsense_pointcloud'),
             'align_depth.enable': True,
             'usb_port_id': LaunchConfiguration('realsense_top_usb_port'),
         }]
@@ -129,7 +136,7 @@ def generate_launch_description():
             'rgb_camera.color_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.depth_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.infra_profile': LaunchConfiguration('realsense_profile'),
-            'pointcloud.enable': True,
+            'pointcloud.enable': LaunchConfiguration('realsense_pointcloud'),
             'align_depth.enable': True,
             'usb_port_id': LaunchConfiguration('realsense_wrist_usb_port'),
         }]
@@ -178,6 +185,7 @@ def generate_launch_description():
         realsense_top_usb_port_arg,
         realsense_wrist_usb_port_arg,
         realsense_profile_arg,
+        realsense_pointcloud_arg,
         domain_id_env,
         station_group
     ])
