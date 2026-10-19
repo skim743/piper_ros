@@ -113,7 +113,7 @@ def generate_launch_description():
             'rgb_camera.color_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.depth_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.infra_profile': LaunchConfiguration('realsense_profile'),
-            '_usb_port_id': LaunchConfiguration('realsense_top_usb_port'),
+            'usb_port_id': LaunchConfiguration('realsense_top_usb_port'),
         }]
     )
 
@@ -127,7 +127,7 @@ def generate_launch_description():
             'rgb_camera.color_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.depth_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.infra_profile': LaunchConfiguration('realsense_profile'),
-            '_usb_port_id': LaunchConfiguration('realsense_wrist_usb_port'),
+            'usb_port_id': LaunchConfiguration('realsense_wrist_usb_port'),
         }]
     )
 

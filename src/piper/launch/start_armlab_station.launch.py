@@ -115,7 +115,7 @@ def generate_launch_description():
             'depth_module.infra_profile': LaunchConfiguration('realsense_profile'),
             'pointcloud.enable': True,
             'align_depth.enable': True,
-            '_usb_port_id': LaunchConfiguration('realsense_top_usb_port'),
+            'usb_port_id': LaunchConfiguration('realsense_top_usb_port'),
         }]
     )
 
@@ -131,7 +131,7 @@ def generate_launch_description():
             'depth_module.infra_profile': LaunchConfiguration('realsense_profile'),
             'pointcloud.enable': True,
             'align_depth.enable': True,
-            '_usb_port_id': LaunchConfiguration('realsense_wrist_usb_port'),
+            'usb_port_id': LaunchConfiguration('realsense_wrist_usb_port'),
         }]
     )
 
