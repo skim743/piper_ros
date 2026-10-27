@@ -2,7 +2,10 @@ from launch import LaunchDescription
 from launch_ros.actions import Node, PushRosNamespace
 from launch.actions import DeclareLaunchArgument, GroupAction, SetEnvironmentVariable
 from launch.conditions import LaunchConfigurationNotEquals
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitution import Substitution
+from launch.substitutions import LaunchConfiguration, PythonExpression, SubstitutionFailure
+from launch.utilities import normalize_to_list_of_substitutions, perform_substitutions
+import glob
 import os
 import re
 import socket
@@ -13,6 +16,42 @@ def get_station_number():
     # Hostnames look like robotics-education-lab<N>; returns 0 if no match
     match = re.search(r'robotics-education-lab(\d+)(?:\..*)?$', socket.gethostname())
     return int(match.group(1)) if match else 0
+
+REALSENSE_VENDOR_ID = '8086'  # Intel
+
+class RealSenseUsbPort(Substitution):
+    """Resolves a RealSense's bus-port ID (e.g. 2-9) for usb_port_id from its USB controller's PCI address and port.
+
+    The bus number can change between boots, but the controller's PCI address and the port number do not.
+    """
+
+    def __init__(self, controller, port):
+        super().__init__()
+        self.controller = normalize_to_list_of_substitutions(controller)
+        self.port = normalize_to_list_of_substitutions(port)
+
+    def describe(self):
+        return 'RealSenseUsbPort(controller={}, port={})'.format(
+            ' + '.join(s.describe() for s in self.controller),
+            ' + '.join(s.describe() for s in self.port))
+
+    def perform(self, context):
+        controller = perform_substitutions(context, self.controller)
+        port = perform_substitutions(context, self.port)
+        if '-' in port:
+            return port  # already a full bus-port ID
+        # Each usb<N> root hub under the controller is one of its buses (USB 2 and USB 3)
+        for hub in sorted(glob.glob(f'/sys/bus/pci/devices/{controller}/usb*')):
+            usb_port_id = f'{os.path.basename(hub)[len("usb"):]}-{port}'
+            try:
+                with open(os.path.join(hub, usb_port_id, 'idVendor')) as f:
+                    if f.read().strip() == REALSENSE_VENDOR_ID:
+                        return usb_port_id
+            except OSError:
+                pass
+        raise SubstitutionFailure(
+            f'No RealSense found on port {port} of USB controller {controller}; '
+            'check that the camera is plugged in and running at USB 3 speed')
 
 def generate_launch_description():
     log_level_arg = DeclareLaunchArgument(
@@ -63,16 +102,24 @@ def generate_launch_description():
         description='V4L2 device path of the Logitech C922 webcam.'
     )
 
+    realsense_usb_controller_arg = DeclareLaunchArgument(
+        'realsense_usb_controller',
+        default_value='0000:80:14.0',
+        description='PCI address of the USB controller both RealSense D435i cameras are plugged into.'
+    )
+
     realsense_top_usb_port_arg = DeclareLaunchArgument(
         'realsense_top_usb_port',
-        default_value='4-9',
-        description='USB port ID of the top RealSense D435i.'
+        default_value='9',
+        description='USB port number of the top RealSense D435i on realsense_usb_controller. '
+                    'A full bus-port ID (e.g. 4-9) is used as is.'
     )
 
     realsense_wrist_usb_port_arg = DeclareLaunchArgument(
         'realsense_wrist_usb_port',
-        default_value='4-10',
-        description='USB port ID of the wrist RealSense D435i.'
+        default_value='10',
+        description='USB port number of the wrist RealSense D435i on realsense_usb_controller. '
+                    'A full bus-port ID (e.g. 4-10) is used as is.'
     )
 
     realsense_profile_arg = DeclareLaunchArgument(
@@ -113,7 +160,8 @@ def generate_launch_description():
             'rgb_camera.color_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.depth_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.infra_profile': LaunchConfiguration('realsense_profile'),
-            'usb_port_id': LaunchConfiguration('realsense_top_usb_port'),
+            'usb_port_id': RealSenseUsbPort(LaunchConfiguration('realsense_usb_controller'),
+                                            LaunchConfiguration('realsense_top_usb_port')),
         }]
     )
 
@@ -127,7 +175,8 @@ def generate_launch_description():
             'rgb_camera.color_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.depth_profile': LaunchConfiguration('realsense_profile'),
             'depth_module.infra_profile': LaunchConfiguration('realsense_profile'),
-            'usb_port_id': LaunchConfiguration('realsense_wrist_usb_port'),
+            'usb_port_id': RealSenseUsbPort(LaunchConfiguration('realsense_usb_controller'),
+                                            LaunchConfiguration('realsense_wrist_usb_port')),
         }]
     )
 
@@ -171,6 +220,7 @@ def generate_launch_description():
         gripper_exist_arg,
         gripper_val_mutiple_arg,
         logitech_video_device_arg,
+        realsense_usb_controller_arg,
         realsense_top_usb_port_arg,
         realsense_wrist_usb_port_arg,
         realsense_profile_arg,
