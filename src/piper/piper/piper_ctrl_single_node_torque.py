@@ -35,6 +35,9 @@ class PiperRosNode(Node):
         self.declare_parameter('gripper_val_mutiple', 1)
         self.declare_parameter('station_id', 0)
         self.declare_parameter('offsets_file', '')
+        # MIT position and velocity gains used while mit_pos_ctrl_srv is enabled
+        self.declare_parameter('mit_kp', 1.0)
+        self.declare_parameter('mit_kd', 0.8)
 
         self.can_port = self.get_parameter('can_port').get_parameter_value().string_value
         self.auto_enable = self.get_parameter('auto_enable').get_parameter_value().bool_value
@@ -59,6 +62,7 @@ class PiperRosNode(Node):
         self.end_pose_stamped_pub = self.create_publisher(PoseStamped, 'end_pose_stamped', 1)
         # Service
         self.motor_srv = self.create_service(Enable, 'enable_srv', self.handle_enable_service)
+        self.mit_pos_ctrl_srv = self.create_service(Enable, 'mit_pos_ctrl_srv', self.handle_mit_pos_ctrl_service)
         # Joint
         self.joint_states = JointState()
         self.joint_states.name = ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'gripper']
@@ -79,6 +83,9 @@ class PiperRosNode(Node):
         self.joint_ctrl.effort = [0.0] * 7
         # Enable flag
         self.__enable_flag = False
+        # Active MIT gains. Zero (pure torque control) unless mit_pos_ctrl_srv is enabled
+        self.mit_kp = 0.0
+        self.mit_kd = 0.0
         # Create piper class and open CAN interface
         self.piper = C_PiperInterface_V2() # CAN name intensionally omitted to make it always work
         self.piper.ConnectPort()
@@ -324,7 +331,7 @@ class PiperRosNode(Node):
                 self.piper.GripperCtrl(abs(gripper), 1000, 0x01, 0)
 
     def joint_callback(self, joint_data):
-        """Callback function for joint torques
+        """Callback function for joint torques, plus joint positions and velocities while mit_pos_ctrl_srv is enabled
 
         Args:
             joint_data (): The joint data
@@ -332,15 +339,22 @@ class PiperRosNode(Node):
         factor = 57324.840764  # 1000*180/3.14
         # self.get_logger().info(f"Received Joint States:")
 
-        # Create a dictionary to store the joint name to position mapping
+        # Create dictionaries to store the joint name to command mappings
         joint_torques = {}
+        joint_positions = {}
+        joint_velocities = {}
         joint_6 = 0
 
-        # Iterate over joint_data.name to map the torques
+        # Iterate over joint_data.name to map the commands. Any of the arrays may be empty.
         for idx, joint_name in enumerate(joint_data.name):
-            self.get_logger().info(f"{joint_name}: {joint_data.effort[idx]}")
-            joint_torques[joint_name] = joint_data.effort[idx]
-        
+            if idx < len(joint_data.effort):
+                self.get_logger().info(f"{joint_name}: {joint_data.effort[idx]}")
+                joint_torques[joint_name] = joint_data.effort[idx]
+            if idx < len(joint_data.position):
+                joint_positions[joint_name] = joint_data.position[idx] - self.joint_offsets.get(joint_name, 0.0)
+            if idx < len(joint_data.velocity):
+                joint_velocities[joint_name] = joint_data.velocity[idx]
+
         # # Get the position of the 7th joint
         # if len(joint_data.position) >= 7:
         #     # self.get_logger().info(f"joint_7: {joint_data.position[6]}")
@@ -367,8 +381,16 @@ class PiperRosNode(Node):
 
             # Use the joint names to control the joints dynamically
             for i in range(6):
-                self.piper.JointMitCtrl(i+1, 0.0, 0.0, 0.0, 0.0, joint_torques.get(f'joint{i+1}', 0))
-                self.get_logger().info(f"joint{i+1}: {joint_torques.get(f'joint{i+1}', 0)}")
+                joint_name = f'joint{i+1}'
+                if self.mit_kp == 0.0 and self.mit_kd == 0.0:
+                    # Pure torque control
+                    self.piper.JointMitCtrl(i+1, 0.0, 0.0, 0.0, 0.0, joint_torques.get(joint_name, 0))
+                else:
+                    # A joint with no position command gets no position gain, so it is not pulled towards 0
+                    kp = self.mit_kp if joint_name in joint_positions else 0.0
+                    self.piper.JointMitCtrl(i+1, joint_positions.get(joint_name, 0.0), joint_velocities.get(joint_name, 0.0),
+                                            kp, self.mit_kd, joint_torques.get(joint_name, 0))
+                self.get_logger().info(f"{joint_name}: {joint_torques.get(joint_name, 0)}")
             # self.piper.JointCtrl(
             #     joint_positions.get('joint1', 0),
             #     joint_positions.get('joint2', 0),
@@ -409,9 +431,32 @@ class PiperRosNode(Node):
                 self.piper.GripperCtrl(0, 1000, 0x01, 0)
         else:
             self.__enable_flag = False
+            self.mit_kp = 0.0
+            self.mit_kd = 0.0
             self.piper.DisableArm(7)
             if self.gripper_exist:
                 self.piper.GripperCtrl(0, 1000, 0x02, 0)
+
+    def handle_mit_pos_ctrl_service(self, req, resp):
+        """Handle the service that turns the MIT position and velocity gains on and off
+
+        Meant for initialization only. The new gains take effect on the next joint_ctrl_single message.
+        """
+        self.get_logger().info(f"Received position control request: {req.enable_request}")
+        if req.enable_request and not self.GetEnableFlag():
+            self.get_logger().warn("Position control refused: the arm is not enabled")
+            resp.enable_response = False
+            return resp
+
+        if req.enable_request:
+            self.mit_kp = self.get_parameter('mit_kp').get_parameter_value().double_value
+            self.mit_kd = self.get_parameter('mit_kd').get_parameter_value().double_value
+        else:
+            self.mit_kp = 0.0
+            self.mit_kd = 0.0
+        self.get_logger().info(f"MIT gains: kp={self.mit_kp}, kd={self.mit_kd}")
+        resp.enable_response = True
+        return resp
 
     def handle_enable_service(self, req, resp):
         """Handle enable service for the robotic arm"""
@@ -439,6 +484,8 @@ class PiperRosNode(Node):
                 self.piper.GripperCtrl(0, 1000, 0x01, 0)
             else:
                 enable_flag = any(enable_list)
+                self.mit_kp = 0.0
+                self.mit_kd = 0.0
                 self.piper.DisableArm(7)
                 self.piper.GripperCtrl(0, 1000, 0x02, 0)
 
