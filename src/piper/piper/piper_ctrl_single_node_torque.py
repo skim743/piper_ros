@@ -212,31 +212,40 @@ class PiperRosNode(Node):
         return ros_time
 
     def PublishArmJointAndGripper(self):
+        # Wait for valid high-speed feedback before reading anything
+        while True:
+            msg = self.piper.GetArmHighSpdInfoMsgs()
+            if msg.Hz != 0.0:
+                break
+            # Return so publish_thread can handle the shutdown or CAN loss
+            if not rclpy.ok() or not self.piper.isOk():
+                return
+            self.get_logger().warn("Waiting for high-speed feedback from all motors", throttle_duration_sec=1.0)
+            time.sleep(0.001)
         # Assign timestamp
         # self.joint_states.header.stamp = self.get_clock().now().to_msg()
-        new_time = max(self.piper.GetArmJointMsgs().time_stamp, self.piper.GetArmHighSpdInfoMsgs().time_stamp)
-        self.joint_states.header.stamp = self.float_to_ros_time(new_time)
+        self.joint_states.header.stamp = self.float_to_ros_time(msg.time_stamp)
         # Here, you can set the joint positions to any value you want
-        # The raw data obtained is in degrees multiplied by 1000. To convert to radians, divide by 1000, multiply by π/180, and limit to 5 decimal places
-        joint_0: float = (self.piper.GetArmJointMsgs().joint_state.joint_1 / 1000) * 0.017444
-        joint_1: float = (self.piper.GetArmJointMsgs().joint_state.joint_2 / 1000) * 0.017444
-        joint_2: float = (self.piper.GetArmJointMsgs().joint_state.joint_3 / 1000) * 0.017444
-        joint_3: float = (self.piper.GetArmJointMsgs().joint_state.joint_4 / 1000) * 0.017444
-        joint_4: float = (self.piper.GetArmJointMsgs().joint_state.joint_5 / 1000) * 0.017444
-        joint_5: float = (self.piper.GetArmJointMsgs().joint_state.joint_6 / 1000) * 0.017444
+        # The raw data obtained is in 0.001 rad. To convert to radians, divide by 1000
+        joint_0: float = msg.motor_1.pos / 1000
+        joint_1: float = msg.motor_2.pos / 1000
+        joint_2: float = msg.motor_3.pos / 1000
+        joint_3: float = msg.motor_4.pos / 1000
+        joint_4: float = msg.motor_5.pos / 1000
+        joint_5: float = msg.motor_6.pos / 1000
         joint_6: float = self.piper.GetArmGripperMsgs().gripper_state.grippers_angle / 1000000
-        vel_0: float = self.piper.GetArmHighSpdInfoMsgs().motor_1.motor_speed / 1000
-        vel_1: float = self.piper.GetArmHighSpdInfoMsgs().motor_2.motor_speed / 1000
-        vel_2: float = self.piper.GetArmHighSpdInfoMsgs().motor_3.motor_speed / 1000
-        vel_3: float = self.piper.GetArmHighSpdInfoMsgs().motor_4.motor_speed / 1000
-        vel_4: float = self.piper.GetArmHighSpdInfoMsgs().motor_5.motor_speed / 1000
-        vel_5: float = self.piper.GetArmHighSpdInfoMsgs().motor_6.motor_speed / 1000
-        effort_0:float = self.piper.GetArmHighSpdInfoMsgs().motor_1.effort/1000
-        effort_1:float = self.piper.GetArmHighSpdInfoMsgs().motor_2.effort/1000
-        effort_2:float = self.piper.GetArmHighSpdInfoMsgs().motor_3.effort/1000
-        effort_3:float = self.piper.GetArmHighSpdInfoMsgs().motor_4.effort/1000
-        effort_4:float = self.piper.GetArmHighSpdInfoMsgs().motor_5.effort/1000
-        effort_5:float = self.piper.GetArmHighSpdInfoMsgs().motor_6.effort/1000
+        vel_0: float = msg.motor_1.motor_speed / 1000
+        vel_1: float = msg.motor_2.motor_speed / 1000
+        vel_2: float = msg.motor_3.motor_speed / 1000
+        vel_3: float = msg.motor_4.motor_speed / 1000
+        vel_4: float = msg.motor_5.motor_speed / 1000
+        vel_5: float = msg.motor_6.motor_speed / 1000
+        effort_0:float = msg.motor_1.effort/1000
+        effort_1:float = msg.motor_2.effort/1000
+        effort_2:float = msg.motor_3.effort/1000
+        effort_3:float = msg.motor_4.effort/1000
+        effort_4:float = msg.motor_5.effort/1000
+        effort_5:float = msg.motor_6.effort/1000
         effort_6:float = self.piper.GetArmGripperMsgs().gripper_state.grippers_effort/1000
         self.joint_states.position = [joint_0,joint_1, joint_2, joint_3, joint_4, joint_5,joint_6]
         self.joint_states.velocity = [vel_0, vel_1, vel_2, vel_3, vel_4, vel_5]
