@@ -364,11 +364,11 @@ class PiperRosNode(Node):
             if idx < len(joint_data.velocity):
                 joint_velocities[joint_name] = joint_data.velocity[idx]
 
-        # # Get the position of the 7th joint
-        # if len(joint_data.position) >= 7:
-        #     # self.get_logger().info(f"joint_7: {joint_data.position[6]}")
-        #     joint_6 = round(joint_data.position[6] * 1000 * 1000)
-        #     joint_6 = joint_6 * self.gripper_val_mutiple
+        # Get the position of the 7th joint
+        if len(joint_data.position) >= 7:
+            # self.get_logger().info(f"joint_7: {joint_data.position[6]}")
+            joint_6 = round(joint_data.position[6] * 1000 * 1000)
+            joint_6 = joint_6 * self.gripper_val_mutiple
 
         # # Control the motor speed
         if self.GetEnableFlag():
