@@ -7,6 +7,7 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 import time
 import threading
+from collections import deque
 import argparse
 import math
 from piper_sdk import *
@@ -38,6 +39,14 @@ class PiperRosNode(Node):
         # MIT position and velocity gains used while mit_pos_ctrl_srv is enabled
         self.declare_parameter('mit_kp', 1.0)
         self.declare_parameter('mit_kd', 0.8)
+        # kp ramp while mit_pos_ctrl_srv is enabled, as in piper_sdk's armlab_interface/piper_ctrl_go_zero_mit.py
+        self.declare_parameter('mit_align_tol', 0.4)  # rad. Starts raising kp once every joint is this close
+        self.declare_parameter('mit_stall_rate', 0.05)  # rad/s. Also starts raising kp once the largest error changes slower than this
+        self.declare_parameter('mit_stall_window', 0.5)  # s the rate is measured over
+        self.declare_parameter('mit_done_tol', 0.01)  # rad. Stops raising kp once every joint is this close
+        self.declare_parameter('mit_dkp', 0.2)  # kp added every mit_dkp_period
+        self.declare_parameter('mit_dkp_period', 0.005)  # s
+        self.declare_parameter('mit_kp_max', 50.0)  # This keeps a stuck joint from winding kp up
 
         self.can_port = self.get_parameter('can_port').get_parameter_value().string_value
         self.auto_enable = self.get_parameter('auto_enable').get_parameter_value().bool_value
@@ -86,6 +95,9 @@ class PiperRosNode(Node):
         # Active MIT gains. Zero (pure torque control) unless mit_pos_ctrl_srv is enabled
         self.mit_kp = 0.0
         self.mit_kd = 0.0
+        self.mit_aligning = False  # Whether the kp ramp has started
+        self.mit_last_ramp_time = None
+        self.mit_error_history = deque()  # (time, largest joint error) over the last mit_stall_window
         # Create piper class and open CAN interface
         self.piper = C_PiperInterface_V2() # CAN name intensionally omitted to make it always work
         self.piper.ConnectPort()
@@ -388,6 +400,9 @@ class PiperRosNode(Node):
         #         self.piper.MotionCtrl_2(0x01, 0x01, 100)
             self.piper.MotionCtrl_2(0x01, 0x04, 0, 0xAD)
 
+            if self.mit_kp != 0.0 or self.mit_kd != 0.0:
+                self.RampMitKp(joint_positions)
+
             # Use the joint names to control the joints dynamically
             for i in range(6):
                 joint_name = f'joint{i+1}'
@@ -446,10 +461,52 @@ class PiperRosNode(Node):
             if self.gripper_exist:
                 self.piper.GripperCtrl(0, 1000, 0x02, 0)
 
+    def RampMitKp(self, joint_positions):
+        """Raises kp the way piper_sdk's armlab_interface/piper_ctrl_go_zero_mit.py does
+
+        Holds the starting gains until every joint is within mit_align_tol, then adds mit_dkp every mit_dkp_period until
+        every joint is within mit_done_tol. kd stays at its starting value. Timed rather than per message, because the
+        rate of joint_ctrl_single messages is up to the publisher.
+
+        Unlike the script, the ramp also starts if the largest error stops changing, since the starting gains can stall
+        the arm outside mit_align_tol.
+
+        Args:
+            joint_positions (dict): The commanded joint positions, in rad
+        """
+        msg = self.piper.GetArmHighSpdInfoMsgs()
+        if msg.Hz == 0.0 or not joint_positions:
+            return
+        motors = [msg.motor_1, msg.motor_2, msg.motor_3, msg.motor_4, msg.motor_5, msg.motor_6]
+        max_error = max(abs(joint_positions[f'joint{i+1}'] - motors[i].pos / 1000)
+                        for i in range(6) if f'joint{i+1}' in joint_positions)
+
+        now = time.monotonic()
+        elapsed = 0.0 if self.mit_last_ramp_time is None else now - self.mit_last_ramp_time
+        self.mit_last_ramp_time = now
+
+        # Keep the oldest sample at or before the window start, so a full window is always covered
+        stall_window = self.get_parameter('mit_stall_window').get_parameter_value().double_value
+        self.mit_error_history.append((now, max_error))
+        while len(self.mit_error_history) > 1 and self.mit_error_history[1][0] <= now - stall_window:
+            self.mit_error_history.popleft()
+        oldest_time, oldest_error = self.mit_error_history[0]
+        stall_rate = self.get_parameter('mit_stall_rate').get_parameter_value().double_value
+        stalled = now - oldest_time >= stall_window and abs(oldest_error - max_error) < stall_rate * (now - oldest_time)
+
+        if stalled or max_error < self.get_parameter('mit_align_tol').get_parameter_value().double_value:
+            self.mit_aligning = True
+        if self.mit_aligning and max_error > self.get_parameter('mit_done_tol').get_parameter_value().double_value:
+            dkp = self.get_parameter('mit_dkp').get_parameter_value().double_value
+            period = self.get_parameter('mit_dkp_period').get_parameter_value().double_value
+            kp_max = self.get_parameter('mit_kp_max').get_parameter_value().double_value
+            self.mit_kp = min(self.mit_kp + dkp * elapsed / period, kp_max)
+
     def handle_mit_pos_ctrl_service(self, req, resp):
         """Handle the service that turns the MIT position and velocity gains on and off
 
-        Meant for initialization only. The new gains take effect on the next joint_ctrl_single message.
+        Meant for initialization only. The new gains take effect on the next joint_ctrl_single message, and kp then ramps
+        up in RampMitKp().
         """
         self.get_logger().info(f"Received position control request: {req.enable_request}")
         if req.enable_request and not self.GetEnableFlag():
@@ -460,6 +517,9 @@ class PiperRosNode(Node):
         if req.enable_request:
             self.mit_kp = self.get_parameter('mit_kp').get_parameter_value().double_value
             self.mit_kd = self.get_parameter('mit_kd').get_parameter_value().double_value
+            self.mit_aligning = False
+            self.mit_last_ramp_time = None
+            self.mit_error_history.clear()
         else:
             self.mit_kp = 0.0
             self.mit_kd = 0.0
